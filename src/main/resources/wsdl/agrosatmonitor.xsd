@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="http://agrosatmonitor.com/soap"
+           targetNamespace="http://agrosatmonitor.com/soap"
+           elementFormDefault="qualified">
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         Operação 1: ConsultarRelatorioFazenda
+         Retorna médias consolidadas de monitoramento por período
+    ═══════════════════════════════════════════════════════════════════════════ -->
+
+    <xs:element name="ConsultarRelatorioRequest">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="fazendaId" type="xs:long"/>
+                <xs:element name="dataInicio" type="xs:string" minOccurs="0"/>
+                <xs:element name="dataFim"    type="xs:string" minOccurs="0"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <xs:element name="ConsultarRelatorioResponse">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="fazendaId"         type="xs:long"/>
+                <xs:element name="nomeFazenda"        type="xs:string"/>
+                <xs:element name="temperaturaMedia"   type="xs:double"/>
+                <xs:element name="umidadeMedia"       type="xs:double"/>
+                <xs:element name="precipitacaoTotal"  type="xs:double"/>
+                <xs:element name="ndviMedio"          type="xs:double"/>
+                <xs:element name="quantidadeAlertas"  type="xs:long"/>
+                <xs:element name="periodoInicio"      type="xs:string"/>
+                <xs:element name="periodoFim"         type="xs:string"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         Operação 2: ProcessarRiscoAgricola
+         Analisa dados recentes e calcula nível de risco da fazenda
+    ═══════════════════════════════════════════════════════════════════════════ -->
+
+    <xs:element name="ProcessarRiscoRequest">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="fazendaId" type="xs:long"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <xs:element name="ProcessarRiscoResponse">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="fazendaId"    type="xs:long"/>
+                <xs:element name="nivelRisco"   type="xs:string"/>
+                <xs:element name="pontuacaoRisco" type="xs:double"/>
+                <xs:element name="motivo"       type="xs:string"/>
+                <xs:element name="recomendacao" type="xs:string"/>
+                <xs:element name="dataAnalise"  type="xs:string"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+</xs:schema>
