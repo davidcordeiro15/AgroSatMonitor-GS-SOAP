@@ -301,4 +301,4 @@ Este serviço acessa as seguintes tabelas do schema compartilhado (criadas pelo 
 
 ---
 
-*FIAP — Pós-Graduação em Inteligência Artificial para Devs | Space Connect 2025*
+
