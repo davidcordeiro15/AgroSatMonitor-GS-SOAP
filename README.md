@@ -89,7 +89,361 @@ com.agrosatmonitor.soap/
 └── exception/
     └── ResourceNotFoundException.java
 ```
+# 📊 Diagramas — AgroSat SOAP Service
 
+---
+
+## 🏗️ Diagrama de Arquitetura
+
+```mermaid
+graph TB
+    subgraph Consumidor["🚀 AgroSat REST API :8081"]
+        RC[RelatorioController]
+        RS[RelatorioService]
+        WST[WebServiceTemplate]
+    end
+
+    subgraph SOAP["📋 AgroSat SOAP Service :8082"]
+        DISP[MessageDispatcherServlet /ws]
+        RE[RelatorioEndpoint]
+        RKE[RiscoEndpoint]
+        RELSV[RelatorioService]
+        RISKSV[RiscoService]
+        REPO[Repositories]
+    end
+
+    subgraph DB["🗄️ Oracle Database"]
+        FAZ[(TB_FAZENDA)]
+        CLI[(TB_MON_CLIMATICO)]
+        VEG[(TB_MON_VEGETACAO)]
+        ALT[(TB_ALERTA_AGRICOLA)]
+    end
+
+    subgraph Contrato["📄 Contrato SOAP"]
+        XSD[agrosatmonitor.xsd]
+        WSDL[agrosatmonitor.wsdl]
+    end
+
+    RC --> RS
+    RS --> WST
+    WST -->|"ConsultarRelatorioRequest XML"| DISP
+    WST -->|"ProcessarRiscoRequest XML"| DISP
+    DISP --> RE
+    DISP --> RKE
+    RE --> RELSV
+    RKE --> RISKSV
+    RELSV --> REPO
+    RISKSV --> REPO
+    REPO --> FAZ
+    REPO --> CLI
+    REPO --> VEG
+    REPO --> ALT
+    RE -->|"ConsultarRelatorioResponse XML"| WST
+    RKE -->|"ProcessarRiscoResponse XML"| WST
+    XSD --> WSDL
+
+    style Consumidor fill:#cce5ff,color:#000
+    style SOAP fill:#fde8c8,color:#000
+    style DB fill:#f8d7da,color:#000
+    style Contrato fill:#d4edda,color:#000
+```
+
+---
+
+## 🔄 Fluxograma — ConsultarRelatorioFazenda
+
+```mermaid
+flowchart TD
+    A(["Início: SOAP ConsultarRelatorioRequest"]) --> B[MessageDispatcherServlet recebe XML]
+    B --> C[Rotear para RelatorioEndpoint via @PayloadRoot]
+    C --> D[Extrair fazendaId do elemento XML]
+    D --> E[Extrair dataInicio e dataFim opcionais]
+    E --> F{Fazenda existe no Oracle?}
+    F -->|Não| ERR1[Lançar ResourceNotFoundException]
+    F -->|Sim| G[FazendaRepository: buscar nome da fazenda]
+    G --> H[ClimaticoRepository: AVG temperatura]
+    H --> I[ClimaticoRepository: AVG umidade]
+    I --> J[ClimaticoRepository: SUM precipitacao]
+    J --> K[VegetacaoRepository: AVG ndvi]
+    K --> L[AlertaRepository: COUNT alertas]
+    L --> M{dataInicio fornecida?}
+    M -->|Não| N[Usar últimos 30 dias como período]
+    M -->|Sim| O[Usar datas informadas]
+    N --> P[Montar RelatorioFazendaDto com todas as métricas]
+    O --> P
+    P --> Q[RelatorioEndpoint: construir XML de resposta via DOM]
+    Q --> R(["SOAP ConsultarRelatorioResponse — 200 OK"])
+
+    style A fill:#28a745,color:#fff
+    style R fill:#007bff,color:#fff
+    style ERR1 fill:#dc3545,color:#fff
+    style H fill:#fff3cd,color:#000
+    style I fill:#fff3cd,color:#000
+    style J fill:#fff3cd,color:#000
+    style K fill:#fff3cd,color:#000
+    style L fill:#fff3cd,color:#000
+```
+
+---
+
+## 🔄 Fluxograma — ProcessarRiscoAgricola
+
+```mermaid
+flowchart TD
+    A(["Início: SOAP ProcessarRiscoRequest"]) --> B[MessageDispatcherServlet recebe XML]
+    B --> C[Rotear para RiscoEndpoint via @PayloadRoot]
+    C --> D[Extrair fazendaId do elemento XML]
+    D --> E{Fazenda existe?}
+    E -->|Não| ERR1[Lançar ResourceNotFoundException]
+    E -->|Sim| F[Iniciar pontuação em zero]
+    F --> G[ClimaticoRepository: AVG temperatura]
+    G --> H{Temperatura maior que 38 graus?}
+    H -->|Sim| I[Pontuação + 30 pontos]
+    H -->|Não| J{Temperatura maior que 32 graus?}
+    J -->|Sim| K[Pontuação + 15 pontos]
+    J -->|Não| L[ClimaticoRepository: AVG umidade]
+    I --> L
+    K --> L
+    L --> M{Umidade menor que 30 por cento?}
+    M -->|Sim| N[Pontuação + 25 pontos]
+    M -->|Não| O[VegetacaoRepository: AVG ndvi]
+    N --> O
+    O --> P{NDVI menor que 0.10?}
+    P -->|Sim| Q[Pontuação + 35 pontos]
+    P -->|Não| R{NDVI menor que 0.25?}
+    R -->|Sim| S[Pontuação + 20 pontos]
+    R -->|Não| T[AlertaRepository: COUNT alertas]
+    Q --> T
+    S --> T
+    T --> U{Quantidade de alertas maior que 5?}
+    U -->|Sim| V[Pontuação + 2 por alerta máx 20]
+    U -->|Não| W[Classificar nível de risco]
+    V --> W
+    W --> X{Pontuação maior ou igual a 70?}
+    X -->|Sim| Y[Nível CRITICO — intervenção imediata]
+    X -->|Não| Z{Pontuação maior ou igual a 45?}
+    Z -->|Sim| AA[Nível ALTO — monitorar diariamente]
+    Z -->|Não| AB{Pontuação maior ou igual a 20?}
+    AB -->|Sim| AC[Nível MEDIO — monitoramento regular]
+    AB -->|Não| AD[Nível BAIXO — condições favoráveis]
+    Y --> AE[Montar ProcessarRiscoResponse via DOM]
+    AA --> AE
+    AC --> AE
+    AD --> AE
+    AE --> AF(["SOAP ProcessarRiscoResponse — 200 OK"])
+
+    style A fill:#28a745,color:#fff
+    style AF fill:#007bff,color:#fff
+    style ERR1 fill:#dc3545,color:#fff
+    style Y fill:#dc3545,color:#fff
+    style AA fill:#fd7e14,color:#fff
+    style AC fill:#ffc107,color:#000
+    style AD fill:#28a745,color:#fff
+```
+
+---
+
+## 🧩 Diagrama de Classes
+
+```mermaid
+classDiagram
+    direction TB
+
+    class RelatorioEndpoint {
+        <<Endpoint>>
+        -String NAMESPACE
+        -RelatorioService relatorioService
+        +consultarRelatorio(Element) Element
+        -getOptionalText(Element, String) String
+        -addElement(Document, Element, String, String) void
+    }
+
+    class RiscoEndpoint {
+        <<Endpoint>>
+        -String NAMESPACE
+        -RiscoService riscoService
+        +processarRisco(Element) Element
+        -addElement(Document, Element, String, String) void
+    }
+
+    class RelatorioService {
+        -FazendaRepository fazendaRepository
+        -ClimaticoRepository climaticoRepository
+        -VegetacaoRepository vegetacaoRepository
+        -AlertaRepository alertaRepository
+        +consultarRelatorio(Long, String, String) RelatorioFazendaDto
+    }
+
+    class RiscoService {
+        -FazendaRepository fazendaRepository
+        -ClimaticoRepository climaticoRepository
+        -VegetacaoRepository vegetacaoRepository
+        -AlertaRepository alertaRepository
+        +processarRisco(Long) RiscoAgricolaDto
+    }
+
+    class RelatorioFazendaDto {
+        -Long fazendaId
+        -String nomeFazenda
+        -Double temperaturaMedia
+        -Double umidadeMedia
+        -Double precipitacaoTotal
+        -Double ndviMedio
+        -Long quantidadeAlertas
+        -String periodoInicio
+        -String periodoFim
+    }
+
+    class RiscoAgricolaDto {
+        -Long fazendaId
+        -String nivelRisco
+        -Double pontuacaoRisco
+        -String motivo
+        -String recomendacao
+        -String dataAnalise
+    }
+
+    class FazendaRepository {
+        <<Repository>>
+        +findById(Long) Optional~Fazenda~
+        +save(Fazenda) Fazenda
+    }
+
+    class ClimaticoRepository {
+        <<Repository>>
+        +mediaTemperatura(Long) Double
+        +mediaUmidade(Long) Double
+        +totalPrecipitacao(Long) Double
+    }
+
+    class VegetacaoRepository {
+        <<Repository>>
+        +mediaNdvi(Long) Double
+        +findByFazendaIdOrderByDataLeituraDesc(Long) List
+    }
+
+    class AlertaRepository {
+        <<Repository>>
+        +countByFazendaId(Long) long
+        +findByFazendaIdOrderByDataGeracaoDesc(Long) List
+    }
+
+    class Fazenda {
+        -Long id
+        -String nome
+        -Double latitude
+        -Double longitude
+        -Double areaHectares
+        -String cidade
+        -String estado
+        -LocalDateTime dataCadastro
+    }
+
+    class MonitoramentoClimatico {
+        -Long id
+        -Long fazendaId
+        -Double temperatura
+        -Double umidade
+        -Double precipitacao
+        -Double velocidadeVento
+        -LocalDateTime dataLeitura
+        -LocalDateTime dataCriacao
+    }
+
+    class MonitoramentoVegetacao {
+        -Long id
+        -Long fazendaId
+        -Double ndvi
+        -Integer nivelSaudeVegetacaoCodigo
+        -LocalDateTime dataLeitura
+    }
+
+    class AlertaAgricola {
+        -Long id
+        -Long fazendaId
+        -Integer tipoAlertaCodigo
+        -Integer nivelRiscoCodigo
+        -String descricao
+        -LocalDateTime dataGeracao
+    }
+
+    class WebServiceConfig {
+        <<Configuration>>
+        +messageDispatcherServlet(ApplicationContext) ServletRegistrationBean
+        +defaultWsdl11Definition(XsdSchema) DefaultWsdl11Definition
+        +agrosatmonitorSchema() XsdSchema
+    }
+
+    RelatorioEndpoint --> RelatorioService : delega
+    RiscoEndpoint --> RiscoService : delega
+    RelatorioService --> RelatorioFazendaDto : retorna
+    RiscoService --> RiscoAgricolaDto : retorna
+    RelatorioService --> FazendaRepository : usa
+    RelatorioService --> ClimaticoRepository : AVG queries
+    RelatorioService --> VegetacaoRepository : AVG ndvi
+    RelatorioService --> AlertaRepository : count
+    RiscoService --> FazendaRepository : valida
+    RiscoService --> ClimaticoRepository : AVG queries
+    RiscoService --> VegetacaoRepository : AVG ndvi
+    RiscoService --> AlertaRepository : count
+    FazendaRepository ..> Fazenda : gerencia
+    ClimaticoRepository ..> MonitoramentoClimatico : gerencia
+    VegetacaoRepository ..> MonitoramentoVegetacao : gerencia
+    AlertaRepository ..> AlertaAgricola : gerencia
+    WebServiceConfig ..> RelatorioEndpoint : registra
+    WebServiceConfig ..> RiscoEndpoint : registra
+```
+
+---
+
+## 🗃️ Diagrama de Entidades (Oracle — apenas leitura)
+
+```mermaid
+erDiagram
+    TB_FAZENDA {
+        NUMBER ID_FAZENDA PK
+        VARCHAR2 NM_FAZENDA
+        NUMBER NR_LATITUDE
+        NUMBER NR_LONGITUDE
+        NUMBER NR_AREA_HECTARES
+        VARCHAR2 NM_CIDADE
+        CHAR SG_ESTADO
+        TIMESTAMP DT_CADASTRO
+    }
+
+    TB_MON_CLIMATICO {
+        NUMBER ID_MON_CLI PK
+        NUMBER ID_FAZENDA FK
+        NUMBER NR_TEMPERATURA
+        NUMBER NR_UMIDADE
+        NUMBER NR_PRECIPITACAO
+        NUMBER NR_VEL_VENTO
+        TIMESTAMP DT_LEITURA
+        TIMESTAMP DT_CRIACAO
+    }
+
+    TB_MON_VEGETACAO {
+        NUMBER ID_MON_VEG PK
+        NUMBER ID_FAZENDA FK
+        NUMBER NR_NDVI
+        NUMBER TP_NIVEL_SAUDE
+        TIMESTAMP DT_LEITURA
+        TIMESTAMP DT_CRIACAO
+    }
+
+    TB_ALERTA_AGRICOLA {
+        NUMBER ID_ALERTA PK
+        NUMBER ID_FAZENDA FK
+        NUMBER TP_ALERTA
+        VARCHAR2 DS_ALERTA
+        NUMBER TP_NIVEL_RISCO
+        TIMESTAMP DT_GERACAO
+    }
+
+    TB_FAZENDA ||--o{ TB_MON_CLIMATICO : "referenciada em"
+    TB_FAZENDA ||--o{ TB_MON_VEGETACAO : "referenciada em"
+    TB_FAZENDA ||--o{ TB_ALERTA_AGRICOLA : "referenciada em"
+```
 ### Recursos XSD/WSDL
 
 ```
